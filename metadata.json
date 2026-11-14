@@ -1,0 +1,6 @@
+{
+  "name": "Трекер зелёного предмета",
+  "description": "Прототип браузерного распознавания зелёного предмета через веб-камеру и HSV-фильтрацию для управления объектом на экране.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Независимая диагностика камеры (без React)</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f4f6f8;
+        color: #0f172a;
+        line-height: 1.5;
+      }
+      .container {
+        max-width: 960px;
+        margin: 0 auto;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 20px;
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: 20px;
+      }
+      .subtitle {
+        margin: 0 0 16px;
+        font-size: 13px;
+        color: #475569;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 18px;
+      }
+      button {
+        padding: 10px 16px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      .btn-start {
+        background: #059669;
+        border-color: #059669;
+        color: #ffffff;
+      }
+      .btn-stop {
+        background: #ffffff;
+        color: #0f172a;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: minmax(280px, 400px) 1fr;
+        gap: 20px;
+        align-items: start;
+      }
+      @media (max-width: 780px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .video-box {
+        width: 100%;
+        aspect-ratio: 4 / 3;
+        background: #020617;
+        border: 1px solid #cbd5e1;
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      video {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        background: #020617;
+      }
+      .panel {
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        border-radius: 10px;
+        padding: 14px;
+        margin-bottom: 14px;
+      }
+      .panel h2 {
+        margin: 0 0 10px;
+        font-size: 14px;
+      }
+      dl {
+        margin: 0;
+        display: grid;
+        grid-template-columns: 200px 1fr;
+        gap: 6px 12px;
+        font-size: 12px;
+      }
+      dt {
+        color: #475569;
+      }
+      dd {
+        margin: 0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        word-break: break-word;
+      }
+      .error-box {
+        display: none;
+        border: 1px solid #fecaca;
+        background: #fef2f2;
+        color: #7f1d1d;
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin-bottom: 14px;
+        font-size: 12px;
+      }
+      .error-box.visible {
+        display: block;
+      }
+      .log {
+        max-height: 200px;
+        overflow: auto;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+      }
+      .log-item {
+        padding: 3px 0;
+        border-bottom: 1px solid #f1f5f9;
+      }
+      .log-item:last-child {
+        border-bottom: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Минимальный тест веб-камеры (чистый HTML/JS без React)</h1>
+      <p class="subtitle">
+        Прямой вызов <code>navigator.mediaDevices.getUserMedia({ video: true, audio: false })</code> и стандартный <code>&lt;video&gt;</code>.
+      </p>
+
+      <div class="controls">
+        <button id="btnStart" type="button" class="btn-start">Включить камеру</button>
+        <button id="btnStop" type="button" class="btn-stop" disabled>Остановить камеру</button>
+      </div>
+
+      <div class="grid">
+        <div>
+          <div class="video-box">
+            <video id="cameraVideo" muted autoplay playsinline></video>
+          </div>
+        </div>
+
+        <div>
+          <div id="errorBox" class="error-box">
+            <strong>Ошибка:</strong> <span id="errorText"></span>
+          </div>
+
+          <div class="panel">
+            <h2>Техническая диагностика</h2>
+            <dl>
+              <dt>isSecureContext / iframe</dt>
+              <dd id="diagEnv">—</dd>
+
+              <dt>Permissions Policy (camera)</dt>
+              <dd id="diagPolicy">—</dd>
+
+              <dt>Устройство (track.label)</dt>
+              <dd id="diagLabel">—</dd>
+
+              <dt>track.readyState</dt>
+              <dd id="diagTrackReadyState">—</dd>
+
+              <dt>track.enabled / track.muted</dt>
+              <dd id="diagTrackFlags">—</dd>
+
+              <dt>video.readyState / paused</dt>
+              <dd id="diagVideoState">—</dd>
+
+              <dt>videoWidth × videoHeight</dt>
+              <dd id="diagVideoSize">0 × 0</dd>
+
+              <dt>Promise video.play()</dt>
+              <dd id="diagPlayState">idle</dd>
+
+              <dt>Кадры (requestVideoFrameCallback)</dt>
+              <dd id="diagFrames">0</dd>
+            </dl>
+          </div>
+
+          <div class="panel">
+            <h2>События video и track</h2>
+            <div id="eventLog" class="log">Ожидание запуска...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const btnStart = document.getElementById('btnStart');
+        const btnStop = document.getElementById('btnStop');
+        const video = document.getElementById('cameraVideo');
+        const errorBox = document.getElementById('errorBox');
+        const errorText = document.getElementById('errorText');
+
+        const diagEnv = document.getElementById('diagEnv');
+        const diagPolicy = document.getElementById('diagPolicy');
+        const diagLabel = document.getElementById('diagLabel');
+        const diagTrackReadyState = document.getElementById('diagTrackReadyState');
+        const diagTrackFlags = document.getElementById('diagTrackFlags');
+        const diagVideoState = document.getElementById('diagVideoState');
+        const diagVideoSize = document.getElementById('diagVideoSize');
+        const diagPlayState = document.getElementById('diagPlayState');
+        const diagFrames = document.getElementById('diagFrames');
+        const eventLog = document.getElementById('eventLog');
+
+        let activeStream = null;
+        let activeTrack = null;
+        let isStarting = false;
+        let startTime = 0;
+        let pollTimer = null;
+        let rvfcId = null;
+        let renderedFrameCount = 0;
+        let playPromiseStatus = 'idle';
+
+        const supportsRVFC = typeof video.requestVideoFrameCallback === 'function';
+
+        function checkEnv() {
+          let inIframe = false;
+          try {
+            inIframe = window.self !== window.top;
+          } catch (e) {
+            inIframe = true;
+          }
+          diagEnv.textContent = String(window.isSecureContext) + ' / ' + (inIframe ? 'да' : 'нет');
+
+          const policy = document.permissionsPolicy || document.featurePolicy;
+          if (policy && typeof policy.allowsFeature === 'function') {
+            try {
+              diagPolicy.textContent = policy.allowsFeature('camera') ? 'allow' : 'block';
+            } catch (e) {
+              diagPolicy.textContent = 'n/a';
+            }
+          } else {
+            diagPolicy.textContent = 'n/a';
+          }
+
+          if (!supportsRVFC) {
+            diagFrames.textContent = 'API не поддерживается';
+          }
+        }
+
+        function logEvent(message) {
+          const elapsed = startTime ? Math.round(performance.now() - startTime) : 0;
+          if (eventLog.textContent === 'Ожидание запуска...') {
+            eventLog.textContent = '';
+          }
+          const item = document.createElement('div');
+          item.className = 'log-item';
+          item.textContent = '+' + elapsed + 'ms  ' + message;
+          eventLog.appendChild(item);
+          eventLog.scrollTop = eventLog.scrollHeight;
+        }
+
+        function showError(stage, err) {
+          const name = (err && err.name) || 'Error';
+          const msg = (err && err.message) || String(err);
+          errorText.textContent = '[' + stage + '] ' + name + ': ' + msg;
+          errorBox.classList.add('visible');
+        }
+
+        function clearError() {
+          errorText.textContent = '';
+          errorBox.classList.remove('visible');
+        }
+
+        function updateDiagnostics() {
+          diagLabel.textContent = activeTrack ? (activeTrack.label || '(пусто)') : '—';
+          diagTrackReadyState.textContent = activeTrack ? activeTrack.readyState : '—';
+          diagTrackFlags.textContent = activeTrack
+            ? String(activeTrack.enabled) + ' / ' + String(activeTrack.muted)
+            : '—';
+          diagVideoState.textContent = String(video.readyState) + ' / ' + String(video.paused);
+          diagVideoSize.textContent = String(video.videoWidth) + ' × ' + String(video.videoHeight);
+          diagPlayState.textContent = playPromiseStatus;
+          if (supportsRVFC) {
+            diagFrames.textContent = String(renderedFrameCount);
+          }
+        }
+
+        function scheduleVideoFrameCallback() {
+          if (!supportsRVFC || !activeStream) return;
+          rvfcId = video.requestVideoFrameCallback(function (now, metadata) {
+            renderedFrameCount += 1;
+            if (renderedFrameCount === 1) {
+              logEvent(
+                'requestVideoFrameCallback: первый кадр (' +
+                  metadata.width +
+                  '×' +
+                  metadata.height +
+                  ')'
+              );
+            }
+            updateDiagnostics();
+            if (activeStream) {
+              scheduleVideoFrameCallback();
+            }
+          });
+        }
+
+        function stopCamera() {
+          if (rvfcId !== null && typeof video.cancelVideoFrameCallback === 'function') {
+            video.cancelVideoFrameCallback(rvfcId);
+            rvfcId = null;
+          }
+          if (pollTimer !== null) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+          }
+          if (activeTrack) {
+            activeTrack.removeEventListener('mute', onTrackEvent);
+            activeTrack.removeEventListener('unmute', onTrackEvent);
+            activeTrack.removeEventListener('ended', onTrackEvent);
+            activeTrack = null;
+          }
+          if (activeStream) {
+            for (const track of activeStream.getTracks()) {
+              track.stop();
+            }
+            activeStream = null;
+          }
+          video.pause();
+          video.srcObject = null;
+
+          isStarting = false;
+          btnStart.disabled = false;
+          btnStop.disabled = true;
+          playPromiseStatus = 'idle';
+          updateDiagnostics();
+          logEvent('Камера остановлена, все дорожки освобождены');
+        }
+
+        function onVideoEvent(ev) {
+          let extra = '';
+          if (ev.type === 'error' && video.error) {
+            extra = ' (code=' + video.error.code + ', message=' + video.error.message + ')';
+            showError('HTMLVideoElement error', {
+              name: 'MediaError(' + video.error.code + ')',
+              message: video.error.message || 'Ошибка декодирования видео',
+            });
+          }
+          logEvent(
+            'video:' +
+              ev.type +
+              ' | readyState=' +
+              video.readyState +
+              ', ' +
+              video.videoWidth +
+              '×' +
+              video.videoHeight +
+              extra
+          );
+          updateDiagnostics();
+        }
+
+        function onTrackEvent(ev) {
+          logEvent(
+            'track:' +
+              ev.type +
+              ' | readyState=' +
+              ev.target.readyState +
+              ', muted=' +
+              String(ev.target.muted)
+          );
+          updateDiagnostics();
+        }
+
+        const videoEvents = [
+          'loadedmetadata',
+          'loadeddata',
+          'canplay',
+          'play',
+          'playing',
+          'error',
+          'stalled',
+          'abort',
+        ];
+        for (const evt of videoEvents) {
+          video.addEventListener(evt, onVideoEvent);
+        }
+
+        btnStart.addEventListener('click', async function () {
+          // Не создавать вторую камеру, если уже есть активный поток или запуск
+          if (activeStream || isStarting) {
+            return;
+          }
+
+          isStarting = true;
+          btnStart.disabled = true;
+          clearError();
+          eventLog.textContent = '';
+          renderedFrameCount = 0;
+          startTime = performance.now();
+          playPromiseStatus = 'idle';
+          updateDiagnostics();
+
+          if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+            showError('Проверка API', {
+              name: 'UnavailableAPI',
+              message: 'navigator.mediaDevices.getUserMedia недоступен',
+            });
+            logEvent('getUserMedia недоступен');
+            isStarting = false;
+            btnStart.disabled = false;
+            return;
+          }
+
+          logEvent('Вызов getUserMedia({ video: true, audio: false })');
+
+          let stream;
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false,
+            });
+          } catch (err) {
+            showError('getUserMedia', err);
+            logEvent('getUserMedia ошибка: ' + (err && err.name) + ' — ' + (err && err.message));
+            isStarting = false;
+            btnStart.disabled = false;
+            return;
+          }
+
+          activeStream = stream;
+          activeTrack = stream.getVideoTracks()[0] || null;
+          isStarting = false;
+          btnStop.disabled = false;
+
+          if (activeTrack) {
+            activeTrack.addEventListener('mute', onTrackEvent);
+            activeTrack.addEventListener('unmute', onTrackEvent);
+            activeTrack.addEventListener('ended', onTrackEvent);
+          }
+
+          logEvent(
+            'MediaStream получен | дорожек=' +
+              stream.getVideoTracks().length +
+              ', label=' +
+              (activeTrack ? activeTrack.label : '—')
+          );
+
+          video.muted = true;
+          video.autoplay = true;
+          video.playsInline = true;
+          video.srcObject = stream;
+
+          scheduleVideoFrameCallback();
+
+          pollTimer = setInterval(updateDiagnostics, 250);
+
+          const playStart = performance.now();
+          playPromiseStatus = 'pending';
+          updateDiagnostics();
+          logEvent('Вызов video.play()');
+
+          try {
+            await video.play();
+            const elapsed = Math.round(performance.now() - playStart);
+            playPromiseStatus = 'resolved (' + elapsed + ' мс)';
+            logEvent('video.play() resolved за ' + elapsed + ' мс');
+          } catch (err) {
+            const elapsed = Math.round(performance.now() - playStart);
+            playPromiseStatus =
+              'rejected (' + elapsed + ' мс): ' + ((err && err.name) || 'Error');
+            showError('video.play()', err);
+            logEvent('video.play() rejected: ' + (err && err.name) + ' — ' + (err && err.message));
+          }
+
+          updateDiagnostics();
+        });
+
+        btnStop.addEventListener('click', stopCamera);
+        window.addEventListener('beforeunload', stopCamera);
+
+        checkEnv();
+        updateDiagnostics();
+      })();
+    </script>
+  </body>
+</html>
